@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sharada Messenger — OpenAPI Specification & Developer Portal</title>
+  <meta name="description" content="Complete OpenAPI 3.1.0 specification and real-time WebSocket protocol documentation for Sharada Private Messenger.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Swagger UI CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  
+  <style>
+    :root {
+      --bg-dark: #0a0d14;
+      --bg-card: #111726;
+      --bg-card-subtle: #172033;
+      --border-color: #243048;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --cyan: #06b6d4;
+      --emerald: #10b981;
+      --rose: #f43f5e;
+      --amber: #f59e0b;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Navigation Bar */
+    header.portal-header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: rgba(10, 13, 20, 0.85);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 1.75rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .brand-logo {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #6366f1 0%, #06b6d4 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+    }
+
+    .brand-logo svg {
+      width: 22px;
+      height: 22px;
+      fill: #ffffff;
+    }
+
+    .brand-info h1 {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .badge-tag {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      background: rgba(99, 102, 241, 0.2);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-oas {
+      background: rgba(6, 182, 212, 0.18);
+      color: #67e8f9;
+      border-color: rgba(6, 182, 212, 0.4);
+    }
+
+    .view-switcher {
+      display: flex;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.45rem 0.95rem;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.18s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab-btn.active {
+      color: #ffffff;
+      background: var(--accent);
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+    }
+
+    .actions-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .action-btn {
+      font-family: var(--font-sans);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.45rem 0.85rem;
+      border-radius: 6px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-card-subtle);
+      border-color: #3b4d75;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 3px 10px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.5);
+      filter: brightness(1.1);
+    }
+
+    /* Content Area */
+    main.portal-content {
+      flex: 1;
+      width: 100%;
+      position: relative;
+    }
+
+    .tab-pane {
+      display: none;
+      width: 100%;
+      animation: fadeIn 0.25s ease forwards;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Custom Overview and Protocol Guides */
+    .guide-container {
+      max-width: 1180px;
+      margin: 2.5rem auto;
+      padding: 0 1.5rem 4rem;
+    }
+
+    .hero-banner {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(6, 182, 212, 0.08) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 16px;
+      padding: 2.2rem;
+      margin-bottom: 2.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .hero-text h2 {
+      font-size: 1.85rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.6rem;
+      background: linear-gradient(120deg, #ffffff 60%, #a5b4fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-text p {
+      color: var(--text-muted);
+      font-size: 0.98rem;
+      line-height: 1.6;
+      max-width: 680px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+
+    @media (max-width: 600px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.6rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .card h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+    }
+
+    .card p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.55;
+      margin-bottom: 1rem;
+    }
+
+    .code-box {
+      background: #060911;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 0.9rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: #38bdf8;
+      overflow-x: auto;
+      margin: 0.8rem 0;
+      line-height: 1.5;
+    }
+
+    .table-custom {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin-top: 1rem;
+    }
+
+    .table-custom th, .table-custom td {
+      padding: 0.75rem 0.9rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .table-custom th {
+      background: var(--bg-card-subtle);
+      color: #94a3b8;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+    }
+
+    .table-custom td {
+      color: var(--text-main);
+    }
+
+    .event-pill {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      background: #1e293b;
+      color: #38bdf8;
+      display: inline-block;
+    }
+
+    .event-pill.danger {
+      background: rgba(244, 63, 94, 0.15);
+      color: #fb7185;
+      border: 1px solid rgba(244, 63, 94, 0.3);
+    }
+
+    .event-pill.success {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    /* Swagger UI Dark Overrides */
+    #swagger-ui {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    .swagger-ui {
+      color: var(--text-main);
+    }
+
+    .swagger-ui .info {
+      margin: 2rem 0;
+    }
+
+    .swagger-ui .info .title {
+      color: #ffffff;
+      font-family: var(--font-sans);
+    }
+
+    .swagger-ui .info p, .swagger-ui .info li {
+      color: var(--text-muted);
+    }
+
+    .swagger-ui .scheme-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1.2rem;
+      box-shadow: none;
+    }
+
+    .swagger-ui .opblock {
+      background: var(--bg-card) !important;
+      border: 1px solid var(--border-color) !important;
+      border-radius: 8px !important;
+      margin-bottom: 0.85rem !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .swagger-ui .opblock .opblock-summary {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 0.7rem 1rem;
+    }
+
+    .swagger-ui .opblock .opblock-summary-method {
+      border-radius: 5px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.8rem;
+    }
+
+    .swagger-ui .opblock .opblock-summary-path {
+      color: #ffffff !important;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+    }
+
+    .swagger-ui .opblock .opblock-summary-description {
+      color: var(--text-muted) !important;
+      font-size: 0.85rem;
+    }
+
+    .swagger-ui .opblock-body {
+      background: #0d121d !important;
+    }
+
+    .swagger-ui table thead tr th, .swagger-ui table thead tr td {
+      color: #94a3b8;
+      border-color: var(--border-color);
+    }
+
+    .swagger-ui .parameters-col_name {
+      color: #e2e8f0;
+      font-family: var(--font-mono);
+    }
+
+    .swagger-ui .parameter__type {
+      color: #38bdf8;
+      font-family: var(--font-mono);
+    }
+
+    .swagger-ui input[type=text], .swagger-ui textarea {
+      background: #060911 !important;
+      color: #ffffff !important;
+      border: 1px solid #243048 !important;
+      border-radius: 6px !important;
+    }
+
+    .swagger-ui .responses-inner {
+      background: transparent;
+    }
+
+    .swagger-ui .response-col_status {
+      font-family: var(--font-mono);
+      color: #34d399;
+    }
+
+    .swagger-ui .model-box {
+      background: #060911;
+      border-radius: 6px;
+    }
+
+    .swagger-ui section.models {
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      background: var(--bg-card);
+    }
+
+    .swagger-ui section.models h4 {
+      color: #ffffff;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .swagger-ui .btn.authorize {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: #ffffff;
+      border: none;
+      box-shadow: 0 2px 10px rgba(99, 102, 241, 0.4);
+    }
+
+    .swagger-ui .btn.authorize svg {
+      fill: #ffffff;
+    }
+
+    /* Redoc container */
+    #redoc-container {
+      width: 100%;
+      min-height: 800px;
+    }
+
+    footer.portal-footer {
+      border-top: 1px solid var(--border-color);
+      padding: 1.5rem 2rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      background: var(--bg-dark);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    footer.portal-footer a {
+      color: #a5b4fc;
+      text-decoration: none;
+    }
+
+    footer.portal-footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation -->
+  <header class="portal-header">
+    <div class="brand-wrap">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+      </div>
+      <div class="brand-info">
+        <h1>Sharada API <span class="badge-tag">v1.4.3</span> <span class="badge-tag badge-oas">OAS 3.1</span></h1>
+      </div>
+    </div>
+
+    <!-- View Switcher -->
+    <nav class="view-switcher" role="tablist">
+      <button class="tab-btn active" onclick="switchTab('swagger')" id="btn-swagger">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+        Interactive Swagger
+      </button>
+      <button class="tab-btn" onclick="switchTab('redoc')" id="btn-redoc">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+        Redoc Documentation
+      </button>
+      <button class="tab-btn" onclick="switchTab('websocket')" id="btn-websocket">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        WebSocket Protocol
+      </button>
+      <button class="tab-btn" onclick="switchTab('security')" id="btn-security">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+        Security Architecture
+      </button>
+    </nav>
+
+    <!-- Download & External Actions -->
+    <div class="actions-wrap">
+      <a href="openapi.yaml" download="sharada-openapi-v1.4.3.yaml" class="action-btn btn-secondary" title="Download OpenAPI YAML Spec">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+        YAML
+      </a>
+      <a href="openapi.json" download="sharada-openapi-v1.4.3.json" class="action-btn btn-secondary" title="Download OpenAPI JSON Spec">
+        JSON
+      </a>
+      <a href="https://github.com/Camp3r404/sharada" target="_blank" rel="noopener noreferrer" class="action-btn btn-primary">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="portal-content">
+    
+    <!-- Tab 1: Swagger UI -->
+    <div id="pane-swagger" class="tab-pane active">
+      <div id="swagger-ui"></div>
+    </div>
+
+    <!-- Tab 2: Redoc Documentation -->
+    <div id="pane-redoc" class="tab-pane">
+      <div id="redoc-container"></div>
+    </div>
+
+    <!-- Tab 3: WebSocket Protocol Deep-Dive -->
+    <div id="pane-websocket" class="tab-pane">
+      <div class="guide-container">
+        <div class="hero-banner">
+          <div class="hero-text">
+            <h2>Real-Time WebSocket Protocol (RFC 6455)</h2>
+            <p>
+              Sharada uses persistent full-duplex WebSocket connections for lightning-fast E2EE message routing, 
+              live presence, and WebRTC peer-to-peer signaling for voice/video calls.
+            </p>
+          </div>
+          <div>
+            <span class="badge-tag" style="font-size: 0.9rem; padding: 0.4rem 0.9rem;">Port 8080 /ws</span>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <!-- Connection Specs -->
+          <div class="card">
+            <h3>Handshake & Connection Parameters</h3>
+            <p>Connect with either query parameters or the <code>Authorization</code> header:</p>
+            <div class="code-box">ws://localhost:8080/ws?token=&lt;session_token&gt;&amp;v=1.4.3</div>
+            <table class="table-custom">
+              <thead>
+                <tr>
+                  <th>Parameter</th>
+                  <th>Location</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>token</code></td>
+                  <td>Query parameter</td>
+                  <td>Active session token generated from <code>/api/auth/login</code></td>
+                </tr>
+                <tr>
+                  <td><code>v</code></td>
+                  <td>Query parameter</td>
+                  <td>Client version (e.g. <code>1.4.3</code>). If &lt;= 1.4.2, server pushes mandatory update notice</td>
+                </tr>
+                <tr>
+                  <td><code>Authorization</code></td>
+                  <td>Handshake Header</td>
+                  <td><code>Bearer &lt;session_token&gt;</code> format</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Event Framing -->
+          <div class="card">
+            <h3>Event Framing Specification</h3>
+            <p>Every packet sent or received over the socket is serialized JSON conforming to this schema:</p>
+            <div class="code-box">{
+  "type": "message",
+  "channel_id": "chan-general",
+  "target_id": "optional-user-id",
+  "sender_id": "user-uuid-1",
+  "sender_name": "camper",
+  "payload": { ... },
+  "timestamp": "2026-11-16T17:20:00Z"
+}</div>
+          </div>
+        </div>
+
+        <!-- Allowed Client Events -->
+        <div class="card" style="margin-bottom: 2rem;">
+          <h3>Client-to-Server Events (Whitelisted)</h3>
+          <p>
+            To prevent remote injection attacks and unauthorized event spoofing, the server enforces an explicit whitelist 
+            of events permitted from clients. Injected events like <code>session_revoked</code> or raw <code>message</code> from client sockets are immediately dropped.
+          </p>
+          <table class="table-custom">
+            <thead>
+              <tr>
+                <th>Event Type</th>
+                <th>Payload Structure</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="event-pill">typing</span></td>
+                <td><code>{ "channel_id": "chan-..." }</code></td>
+                <td>Notifies active channel members that the current user is typing. Verified against channel membership.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill">call_offer</span></td>
+                <td><code>{ "sdp": "...", "target_id": "...", "channel_id": "..." }</code></td>
+                <td>Initiates WebRTC call negotiation. Dispatches SDP offer to recipient or voice room members.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill">call_answer</span></td>
+                <td><code>{ "sdp": "...", "target_id": "..." }</code></td>
+                <td>WebRTC SDP answer from call recipient.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill">call_candidate</span></td>
+                <td><code>{ "candidate": "...", "target_id": "..." }</code></td>
+                <td>ICE candidate trickle for NAT traversal and direct P2P audio/video streaming.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill">call_join</span> / <span class="event-pill">call_leave</span></td>
+                <td><code>{ "channel_id": "voice-..." }</code></td>
+                <td>Participant join/leave events for persistent group voice rooms.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill">call_reject</span> / <span class="event-pill">call_busy</span></td>
+                <td><code>{ "target_id": "..." }</code></td>
+                <td>Call rejection or line busy status signal.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Server Broadcast Events -->
+        <div class="card">
+          <h3>Server-to-Client Events (Broadcast & Targeted)</h3>
+          <p>Events dispatched from the hub to connected clients:</p>
+          <table class="table-custom">
+            <thead>
+              <tr>
+                <th>Event Type</th>
+                <th>Targeting Policy</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="event-pill success">message</span></td>
+                <td>Channel Members Only</td>
+                <td>New encrypted (E2EE) or server-stored message arrived. Payload contains full Message object.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill success">user_online</span> / <span class="event-pill">user_offline</span></td>
+                <td>Global Broadcast</td>
+                <td>Presence state change of a user.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill success">message_reaction</span></td>
+                <td>Channel Members Only</td>
+                <td>Emoji reaction was added or toggled on a specific message.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill success">messages_read</span></td>
+                <td>Channel Members Only</td>
+                <td>Messages up to a specific timestamp were marked as read.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill danger">session_revoked</span></td>
+                <td>Target User Devices</td>
+                <td>Device session was terminated remotely. Triggers immediate local token purge and logout.</td>
+              </tr>
+              <tr>
+                <td><span class="event-pill danger">system_alert</span></td>
+                <td>Target User</td>
+                <td>Critical security or maintenance alert delivered straight into the system channel.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Security Architecture -->
+    <div id="pane-security" class="tab-pane">
+      <div class="guide-container">
+        <div class="hero-banner">
+          <div class="hero-text">
+            <h2>Sharada Security & Version Quarantine System</h2>
+            <p>
+              Architectural deep dive into password cryptography, strict version gating, two-factor authentication, 
+              and anti-tampering defenses implemented in Sharada Core v1.4.3.
+            </p>
+          </div>
+          <div>
+            <span class="badge-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">Verified Hardened</span>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <!-- Password Cryptography -->
+          <div class="card">
+            <h3>Argon2id + Bcrypt (v2) Password Hashing</h3>
+            <p>
+              To protect passwords against massive GPU/ASIC hardware cracker clusters and database dump compromises, 
+              Sharada employs a two-tier hybrid hashing scheme:
+            </p>
+            <div class="code-box">// Format: v2$&lt;argon2id_base64&gt;$&lt;bcrypt_hash&gt;
+// 1. Password + Salt processed via Argon2id:
+//    - Memory: 64 MB
+//    - Iterations: 2
+//    - Parallelism: 4 threads
+// 2. Resulting key hashed via Bcrypt (Cost 12)</div>
+            <p style="font-size: 0.85rem; color: #94a3b8;">
+              Even if a raw database dump is leaked, attackers cannot bypass the 64 MB RAM requirement of Argon2id.
+              Legacy hashes (<code>base64$base64</code>) are transparently migrated to <code>v2$</code> on successful login.
+            </p>
+          </div>
+
+          <!-- Account Lifecycle -->
+          <div class="card">
+            <h3>Onboarding Lifecycle & 2FA Windows</h3>
+            <p>Zero user registration without explicit administrative invite:</p>
+            <table class="table-custom">
+              <thead>
+                <tr>
+                  <th>State</th>
+                  <th>Window</th>
+                  <th>Action on Timeout</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>INVITED</code></td>
+                  <td>48 Hours</td>
+                  <td>Account and credentials permanently purged from database.</td>
+                </tr>
+                <tr>
+                  <td><code>PENDING_2FA</code></td>
+                  <td>24 Hours</td>
+                  <td>Must bind TOTP authenticator app. Purged if unverified within 24h.</td>
+                </tr>
+                <tr>
+                  <td><code>ACTIVE</code></td>
+                  <td>Indefinite</td>
+                  <td>Full access granted. Regular logins require 6-digit TOTP code.</td>
+                </tr>
+                <tr>
+                  <td><code>ARCHIVED</code></td>
+                  <td>7 Days</td>
+                  <td>Self-deleted or admin-archived. Can be restored before automatic purge.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Version Gate Breakdown -->
+        <div class="card">
+          <h3>Client Version Gating & Legacy Cutoff (v1.4.3)</h3>
+          <p>
+            Due to critical security patches addressing channel IDOR and WebSocket broadcast leaks, clients with version 
+            <code>&lt;= 1.4.2</code> are quarantined by the server:
+          </p>
+          <div class="code-box">HTTP/1.1 426 Upgrade Required
+Content-Type: application/json
+
+{
+  "error": true,
+  "message": "Пожалуйста, обновите свой клиент sharada! В обновлении 1.4.3 исправлены критические проблемы безопасности. Версии 1.4.2 и ниже заблокированы."
+}</div>
+          <ul style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.7; margin-left: 1.5rem; margin-top: 1rem;">
+            <li><strong>Channel Quarantine:</strong> <code>GET /api/channels</code> filters out all private and group chats, returning solely the system channel <code>system-sharada-&lt;userID&gt;</code> with the security notice.</li>
+            <li><strong>Action Lockdown:</strong> All message dispatching, reactions, channel creation, and profile modifications return <code>HTTP 426 Upgrade Required</code>.</li>
+            <li><strong>Auto-Updater Integration:</strong> Built-in 1.4.2 clients automatically trigger their update modal with the direct download button for version 1.4.3.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="portal-footer">
+    <div>
+      Sharada Security Architecture & API Documentation &copy; 2026. Statically packaged for GitHub Pages.
+    </div>
+    <div>
+      <a href="openapi.yaml">openapi.yaml</a> &bull; <a href="openapi.json">openapi.json</a> &bull; <a href="https://github.com/Camp3r404/sharada">GitHub Repo</a>
+    </div>
+  </footer>
+
+  <!-- Swagger UI Scripts -->
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+
+  <!-- Redoc Script -->
+  <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+
+  <script>
+    // Tab Switching Logic
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+      const pane = document.getElementById('pane-' + tabId);
+      const btn = document.getElementById('btn-' + tabId);
+      if (pane) pane.classList.add('active');
+      if (btn) btn.classList.add('active');
+
+      if (tabId === 'redoc' && !window._redocInitialized) {
+        initRedoc();
+      }
+    }
+
+    // Initialize Swagger UI
+    let swaggerUIInstance = null;
+    function initSwagger() {
+      swaggerUIInstance = SwaggerUIBundle({
+        url: 'openapi.json',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "BaseLayout",
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 2,
+        docExpansion: "list",
+        filter: true,
+        showExtensions: true,
+        showCommonExtensions: true,
+        persistAuthorization: true
+      });
+    }
+
+    // Initialize Redoc
+    function initRedoc() {
+      window._redocInitialized = true;
+      Redoc.init('openapi.json', {
+        theme: {
+          colors: {
+            primary: { main: '#6366f1' },
+            success: { main: '#10b981' },
+            warning: { main: '#f59e0b' },
+            error: { main: '#f43f5e' },
+            text: { primary: '#f1f5f9', secondary: '#94a3b8' },
+            http: {
+              get: '#06b6d4',
+              post: '#10b981',
+              put: '#f59e0b',
+              delete: '#f43f5e'
+            }
+          },
+          typography: {
+            fontFamily: "'Inter', sans-serif",
+            headings: { fontFamily: "'Inter', sans-serif", fontWeight: '700' },
+            code: { fontFamily: "'JetBrains Mono', monospace" }
+          },
+          sidebar: {
+            backgroundColor: '#111726',
+            textColor: '#f1f5f9'
+          },
+          rightPanel: {
+            backgroundColor: '#0a0d14'
+          }
+        }
+      }, document.getElementById('redoc-container'));
+    }
+
+    // Start on DOM ready
+    window.addEventListener('DOMContentLoaded', () => {
+      initSwagger();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,1943 @@
+openapi: 3.1.0
+info:
+  title: Sharada Private Messenger API
+  version: 1.4.3
+  description: |
+      ## Sharada Core API & Real-Time Protocol Specification
+      
+      Sharada is a high-security, privacy-focused private messenger featuring:
+      - **Zero-knowledge friendly E2EE messaging** and multi-device session management.
+      - **Strict Client Version Gating**: Clients with version `<= 1.4.2` are quarantined and cut off from private/group chats.
+      - **Two-Factor Authentication (TOTP)** lifecycle: `INVITED` (48h single-use raw key) → `PENDING_2FA` (24h TOTP setup) → `ACTIVE`.
+      - **Hybrid Password Hashing**: Argon2id (64MB RAM, 2 iterations, 4 threads) + Bcrypt (v2) with backwards compatibility for legacy hashes.
+      - **Real-Time WebSocket Protocol**: Message delivery, presence indicators, typing status, and WebRTC peer-to-peer signaling for voice/video calls.
+      
+      ---
+      
+      ### Authentication & Headers
+      
+      Most endpoints require a valid session token passed via the `Authorization` header:
+      ```http
+      Authorization: Bearer <session_token>
+      ```
+      
+      #### Required Client Headers:
+      | Header | Description | Required | Example |
+      |---|---|---|---|
+      | `X-Client-Version` | Semantic version of the client. Must be `>= 1.4.3`. Outdated clients receive `426 Upgrade Required`. | Recommended on all requests, mandatory for channel messaging | `1.4.3` |
+      | `X-Device-ID` | Unique device UUID to avoid duplicate sessions on the same physical client. | Optional | `4a8b7e21-9f3c-4d5e-8a1b-0c2d3e4f5a6b` |
+      
+  contact:
+    name: Sharada Security Team
+    url: "https://github.com/Camp3r404/sharada"
+  license:
+    name: Proprietary / Apache-2.0
+    url: "https://github.com/Camp3r404/sharada/blob/main/LICENSE"
+servers:
+  - url: "http://localhost:8080"
+    description: Local development server
+  - url: "https://out.shamper.ru"
+    description: Production Gateway
+tags:
+  - name: "Updates & Versioning"
+    description: Client release checks and mandatory upgrade alerts
+  - name: "Authentication & 2FA"
+    description: "Master key verification, TOTP onboarding, session issuance"
+  - name: User Profile
+    description: "Identity, avatar configuration, inactivity retention policies, account deletion"
+  - name: "Channels & Direct Chats"
+    description: "Direct P2P dialogs, group channels, voice rooms, saved messages"
+  - name: Messaging
+    description: "Encrypted messaging, pagination, reaction toggling, read receipts"
+  - name: Feed Posts
+    description: Public feed micro-posts
+  - name: "Sessions & Devices"
+    description: "Multi-device session listing, E2EE permissions, remote revocation, QR pairing"
+  - name: Fast-Connect NFC
+    description: Instant peer exchange and direct chat establishment via NFC
+  - name: Administration
+    description: "Admin-only user provisioning, account archival, audit logs, broadcast alerts"
+  - name: WebSocket Real-Time
+    description: "Full-duplex WebSocket events, WebRTC signaling, presence"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT / Token
+      description: "Standard session token obtained via `/api/auth/login` or `/api/auth/setup-2fa`."
+  parameters:
+    ClientVersionHeader:
+      name: X-Client-Version
+      in: header
+      required: false
+      description: "Client version string (e.g. `1.4.3`). Clients `< 1.4.3` are restricted or receive `426 Upgrade Required`."
+      schema:
+        type: string
+        example: 1.4.3
+    DeviceIDHeader:
+      name: X-Device-ID
+      in: header
+      required: false
+      description: Client device identifier UUID. Prevents session duplication on repeated logins.
+      schema:
+        type: string
+        format: uuid
+        example: 4a8b7e21-9f3c-4d5e-8a1b-0c2d3e4f5a6b
+  schemas:
+    UserStatus:
+      type: string
+      enum:
+        - INVITED
+        - PENDING_2FA
+        - ACTIVE
+        - ARCHIVED
+      description: Lifecycle status of user account
+    TrustLevel:
+      type: integer
+      enum:
+        - 0
+        - 1
+        - 2
+      description: "0 = Untrusted (auto-deleted after 1 month inactivity), 1 = Trusted (custom inactivity policy), 2 = ForceTrusted (indefinite archival without deletion)"
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+          example: role-trust-1
+        name:
+          type: string
+          example: Trusted Member
+        badge_text:
+          type: string
+          example: VERIFIED
+        badge_color:
+          type: string
+          example: "#6366F1"
+        badge_icon:
+          type: string
+          example: shield-check
+        is_displayed_badge:
+          type: boolean
+          example: true
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        username:
+          type: string
+          example: camper
+        display_name:
+          type: string
+          example: Camper 404
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        trust_level:
+          $ref: "#/components/schemas/TrustLevel"
+        inactivity_policy:
+          type: string
+          enum:
+            - delete
+            - archive
+          example: archive
+        inactivity_timeout_months:
+          type: integer
+          enum:
+            - 1
+            - 3
+          example: 3
+        avatar_url:
+          type: string
+          example: "{\"icon\":\"black_hole.svg\",\"bg\":\"linear-gradient(135deg, #6366F1, #8B5CF6)\"}"
+        bio:
+          type: string
+          example: Sharada lead security architect
+        birth_date:
+          type: string
+          format: date
+          example: 2000-01-01
+        is_admin:
+          type: boolean
+          example: false
+        is_archived:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+        last_active_at:
+          type: string
+          format: date-time
+        invited_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        pending_2fa_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+        archived_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        deletion_scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Role"
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 8b23c5e1-a012-4f3b-9e4a-5c6d7e8f9a0b
+        user_id:
+          type: string
+          format: uuid
+        device_info:
+          type: string
+          example: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Sharada/1.4.3
+        ip_address:
+          type: string
+          example: 192.168.1.100
+        location:
+          type: string
+          example: "Россия, Локальная сеть"
+        allow_e2ee:
+          type: boolean
+          example: true
+        allow_calls:
+          type: boolean
+          example: true
+        is_current:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        last_active_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        is_revoked:
+          type: boolean
+          example: false
+    ChannelType:
+      type: string
+      enum:
+        - direct
+        - group
+        - voice
+        - saved
+        - system
+      description: "Type of channel: direct conversation, group channel, voice room, saved messages, or system notices"
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+          example: direct-9f8a7b6c
+        type:
+          $ref: "#/components/schemas/ChannelType"
+        name:
+          type: string
+          example: alice
+        description:
+          type: string
+          example: Приватный диалог
+        is_e2ee:
+          type: boolean
+          example: true
+        created_by:
+          type: string
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        created_at:
+          type: string
+          format: date-time
+        recipient_id:
+          type: string
+          format: uuid
+          nullable: true
+        recipient_status:
+          type: string
+          nullable: true
+        recipient_is_archived:
+          type: boolean
+          nullable: true
+        recipient_avatar:
+          type: string
+          nullable: true
+        recipient_display_name:
+          type: string
+          nullable: true
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_message:
+          $ref: "#/components/schemas/Message"
+          nullable: true
+        unread_count:
+          type: integer
+          example: 0
+    ChannelMember:
+      type: object
+      properties:
+        channel_id:
+          type: string
+          example: chan-general
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+          example: camper
+        display_name:
+          type: string
+          example: Camper
+        avatar_url:
+          type: string
+        role:
+          type: string
+          enum:
+            - owner
+            - admin
+            - member
+          example: member
+        joined_at:
+          type: string
+          format: date-time
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          example: msg-12345678
+        channel_id:
+          type: string
+          example: chan-general
+        sender_id:
+          type: string
+          format: uuid
+        sender_name:
+          type: string
+          example: camper
+        sender_display_name:
+          type: string
+          example: Camper
+        sender_avatar:
+          type: string
+        content:
+          type: string
+          example: "Hello secure world!"
+        is_e2ee:
+          type: boolean
+          example: true
+        is_read:
+          type: boolean
+          example: false
+        reply_to:
+          type: string
+          nullable: true
+          example: msg-12345670
+        reactions:
+          type: string
+          example: "{\"👍\":[\"user-1\"]}"
+          description: JSON string mapping emoji to array of user IDs
+        created_at:
+          type: string
+          format: date-time
+    Post:
+      type: object
+      properties:
+        id:
+          type: string
+          example: post-8a7b6c5d
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+          example: camper
+        avatar_url:
+          type: string
+        trust_level:
+          type: integer
+          example: 2
+        content:
+          type: string
+          example: "Sharada 1.4.3 released with full security patch!"
+        created_at:
+          type: string
+          format: date-time
+        is_mine:
+          type: boolean
+          example: true
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1042
+        event_type:
+          type: string
+          example: LOGIN_SUCCESS
+        user_id:
+          type: string
+          format: uuid
+        username_snapshot:
+          type: string
+          example: camper
+        ip_address:
+          type: string
+          example: 127.0.0.1
+        user_agent:
+          type: string
+          example: Sharada-Client/1.4.3
+        metadata_json:
+          type: string
+          example: "{}"
+        created_at:
+          type: string
+          format: date-time
+    ReleaseAsset:
+      type: object
+      properties:
+        name:
+          type: string
+          example: sharada-setup.exe
+        browser_download_url:
+          type: string
+          format: uri
+          example: "https://github.com/sharada-social/client/releases/download/v1.4.3/sharada-setup.exe"
+        content_type:
+          type: string
+          example: application/octet-stream
+        size:
+          type: integer
+          example: 12582912
+    ReleaseInfo:
+      type: object
+      properties:
+        version:
+          type: string
+          example: 1.4.3
+        tag_name:
+          type: string
+          example: v1.4.3
+        name:
+          type: string
+          example: Критическое обновление безопасности v1.4.3
+        body:
+          type: string
+          example: "ВНИМАНИЕ: В данном релизе закрыты критические уязвимости безопасности..."
+        html_url:
+          type: string
+          format: uri
+          example: "https://github.com/sharada-social/client/releases/latest"
+        published_at:
+          type: string
+          format: date-time
+        mandatory:
+          type: boolean
+          example: true
+        min_supported_version:
+          type: string
+          example: 1.4.3
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseAsset"
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Invalid credentials or unauthorized
+      required:
+        - error
+        - message
+    WebSocketEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - message
+            - typing
+            - user_online
+            - user_offline
+            - call_offer
+            - call_answer
+            - call_candidate
+            - call_join
+            - call_leave
+            - call_reject
+            - call_busy
+            - channel_created
+            - channel_deleted
+            - message_reaction
+            - messages_read
+            - session_revoked
+            - system_alert
+          example: message
+        channel_id:
+          type: string
+          nullable: true
+          example: chan-general
+        target_id:
+          type: string
+          nullable: true
+          example: user-target-id
+        sender_id:
+          type: string
+          nullable: true
+          example: user-sender-id
+        sender_name:
+          type: string
+          nullable: true
+          example: camper
+        payload:
+          type: object
+          description: Arbitrary JSON payload depending on event type
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - type
+        - timestamp
+paths:
+  /api/updates/check:
+    get:
+      tags:
+        - "Updates & Versioning"
+      summary: "Check for updates & minimum required client version"
+      description: "Returns the latest available release, mandatory flag, minimum required version (1.4.3), and download URLs."
+      parameters:
+        - $ref: "#/components/parameters/ClientVersionHeader"
+      responses:
+        200:
+          description: Release and version gating information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReleaseInfo"
+  /api/auth/login:
+    post:
+      tags:
+        - "Authentication & 2FA"
+      summary: "Log in with master access key & TOTP verification"
+      description: |
+          Authenticates user. Supports first-time `INVITED` activation, `PENDING_2FA` onboarding, and `ACTIVE` login.
+          - If client version <= 1.4.2: Returns `426 Upgrade Required`.
+          - If user has 2FA enabled and no `totp_code` is provided: returns `REQUIRE_2FA`.
+          - If successful: returns session token and user profile.
+      parameters:
+        - $ref: "#/components/parameters/ClientVersionHeader"
+        - $ref: "#/components/parameters/DeviceIDHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: camper
+                password:
+                  type: string
+                  description: Raw master access key
+                  example: x9fK2-pL8q1-mZ4v0-wR7t3
+                totp_code:
+                  type: string
+                  description: 6-digit TOTP code (if 2FA active)
+                  example: 123456
+              required:
+                - username
+                - password
+      responses:
+        200:
+          description: "Login status result (Active session, Require 2FA, or 2FA setup onboarding)"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - title: Login Successful
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ACTIVE
+                      token:
+                        type: string
+                        example: a8f1c7d2e9b04...
+                      user:
+                        $ref: "#/components/schemas/User"
+                  - title: TOTP Required
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: REQUIRE_2FA
+                      message:
+                        type: string
+                        example: Ключ верный. Введите 6-значный код TOTP.
+                      username:
+                        type: string
+                        example: camper
+                      requires_totp:
+                        type: boolean
+                        example: true
+                  - title: First Login (PENDING_2FA Onboarding)
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: PENDING_2FA
+                      message:
+                        type: string
+                      expires_in_hours:
+                        type: integer
+                        example: 24
+                      totp_secret:
+                        type: string
+                        example: JBSWY3DPEHPK3PXP
+                      totp_qr_data_uri:
+                        type: string
+                        example: "data:image/png;base64,..."
+                      totp_auth_url:
+                        type: string
+                        example: "otpauth://totp/Sharada:camper?secret=..."
+                      temp_session_token:
+                        type: string
+        400:
+          description: Bad request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        401:
+          description: Invalid credentials or TOTP verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        403:
+          description: Account is archived or blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        410:
+          description: Invitation or 2FA setup window expired (account permanently purged)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        426:
+          description: "Upgrade Required: Client version is <= 1.4.2"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/setup-2fa:
+    post:
+      tags:
+        - "Authentication & 2FA"
+      summary: "Finalize TOTP verification & activate user account"
+      description: "Validates initial 6-digit TOTP code during the 24-hour onboarding window. Upon success, activates account to `ACTIVE` and issues a permanent 1-year session token."
+      parameters:
+        - $ref: "#/components/parameters/ClientVersionHeader"
+        - $ref: "#/components/parameters/DeviceIDHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  example: 123456
+                totp_code:
+                  type: string
+                  example: 123456
+                username:
+                  type: string
+                  example: camper
+                password:
+                  type: string
+                  example: raw_key_here
+      responses:
+        200:
+          description: TOTP verified and account successfully activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  status:
+                    type: string
+                    example: ACTIVE
+                  token:
+                    type: string
+                    example: session_token_here
+                  user:
+                    $ref: "#/components/schemas/User"
+                  message:
+                    type: string
+                    example: "TOTP успешно подтвержден! Аккаунт активен."
+        400:
+          description: Invalid TOTP code or expired token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/user/me:
+    get:
+      tags:
+        - User Profile
+      summary: "Get current authenticated user profile & badges"
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClientVersionHeader"
+      responses:
+        200:
+          description: Authenticated user object with roles and inactivity policies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        401:
+          description: Unauthorized session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags:
+        - User Profile
+      summary: Update user profile details and inactivity settings
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClientVersionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: camper
+                display_name:
+                  type: string
+                  example: Camper 404
+                bio:
+                  type: string
+                  example: Lead Developer
+                birth_date:
+                  type: string
+                  example: 2000-01-01
+                avatar_url:
+                  type: string
+                  description: JSON avatar config or HTTPS URL
+                  example: "{\"icon\":\"black_hole.svg\",\"bg\":\"linear-gradient(135deg, #6366F1, #8B5CF6)\"}"
+                inactivity_policy:
+                  type: string
+                  enum:
+                    - delete
+                    - archive
+                  description: Only available for trusted users
+                inactivity_timeout_months:
+                  type: integer
+                  enum:
+                    - 1
+                    - 3
+                  description: 1 or 3 months (trusted users only)
+                displayed_role_ids:
+                  type: array
+                  items:
+                    type: string
+                  example:
+                    - role-trust-2
+                    - role-lead
+      responses:
+        200:
+          description: Updated user object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        400:
+          description: Username already taken or invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/user/change-password:
+    post:
+      tags:
+        - User Profile
+      summary: Change master access key
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                old_password:
+                  type: string
+                  example: current_master_key
+                new_password:
+                  type: string
+                  minLength: 8
+                  example: new_secure_key_12345
+                totp_code:
+                  type: string
+                  example: 123456
+              required:
+                - old_password
+                - new_password
+      responses:
+        200:
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Пароль успешно изменён
+        400:
+          description: "Invalid current key, short password, or bad TOTP"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/user/me/delete-account:
+    post:
+      tags:
+        - User Profile
+      summary: Initiate self-deletion (7-day grace period in archive)
+      description: "Revokes all active sessions, kicks WebSocket connections, and schedules permanent purge after 7 days."
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+                  example: master_key
+                totp_code:
+                  type: string
+                  example: 123456
+              required:
+                - password
+                - totp_code
+      responses:
+        200:
+          description: Account archived and purge scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                  deletion_scheduled_at:
+                    type: string
+                    format: date-time
+        401:
+          description: Incorrect key or TOTP code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/users/online:
+    get:
+      tags:
+        - User Profile
+      summary: Get IDs and usernames of currently connected users
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Online user lists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  online_user_ids:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                      - user-uuid-1
+                      - user-uuid-2
+                  online_usernames:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                      - alice
+                      - bob
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/users/search:
+    get:
+      tags:
+        - User Profile
+      summary: Search active users by username substring
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Username search term
+          schema:
+            type: string
+            example: camp
+      responses:
+        200:
+          description: Matching active users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                    username:
+                      type: string
+                      example: camper
+                    avatar_url:
+                      type: string
+                    trust_level:
+                      type: integer
+                      example: 1
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/channels:
+    get:
+      tags:
+        - "Channels & Direct Chats"
+      summary: List user channels and conversations
+      description: |
+          Returns list of dialogs, group chats, saved messages, and system channel.
+          **Security Note**: If client is `<= 1.4.2`, the server quarantines the user and returns ONLY the `system-sharada-<userID>` channel containing the mandatory upgrade alert.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClientVersionHeader"
+      responses:
+        200:
+          description: List of accessible channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Channel"
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - "Channels & Direct Chats"
+      summary: Create a channel or initiate a direct chat
+      description: "Creates group channel, voice room, or direct conversation. Blocked with `426 Upgrade Required` for clients `<= 1.4.2`."
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClientVersionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Project Discussion
+                target_username:
+                  type: string
+                  description: For direct chats
+                  example: bob
+                description:
+                  type: string
+                  example: E2EE secure group
+                type:
+                  type: string
+                  enum:
+                    - group
+                    - direct
+                    - voice
+                  example: direct
+                is_e2ee:
+                  type: boolean
+                  example: true
+                member_ids:
+                  type: array
+                  items:
+                    type: string
+                  example:
+                    - user-uuid-1
+              required:
+                - type
+      responses:
+        200:
+          description: Existing direct chat or saved chat returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  recipient_id:
+                    type: string
+                  type:
+                    type: string
+                  is_e2ee:
+                    type: boolean
+                  exists:
+                    type: boolean
+                    example: true
+        201:
+          description: New channel successfully created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  type:
+                    type: string
+                  is_e2ee:
+                    type: boolean
+        400:
+          description: Invalid body or missing fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        404:
+          description: Target user not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        426:
+          description: "Upgrade Required for clients <= 1.4.2"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/channels/{channel_id}:
+    delete:
+      tags:
+        - "Channels & Direct Chats"
+      summary: Delete channel (Creator or Admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/ClientVersionHeader"
+      responses:
+        200:
+          description: Channel deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  channel_id:
+                    type: string
+                    example: direct-9f8a7b6c
+        400:
+          description: Cannot delete system or saved chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        403:
+          description: "Forbidden: Not creator or admin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        404:
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/channels/{channel_id}/messages:
+    get:
+      tags:
+        - Messaging
+      summary: Get channel message history with cursor pagination
+      description: |
+          Returns historical messages for a channel. The caller must be an active channel member.
+          Outdated clients (`<= 1.4.2`) are restricted to reading only their personal system alert channel.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: chan-general
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+          description: Max messages to return
+        - name: around
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Message ID to center history around
+        - name: before
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Message ID to fetch older messages from
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Message ID to fetch newer messages from
+        - $ref: "#/components/parameters/ClientVersionHeader"
+      responses:
+        200:
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        403:
+          description: "Forbidden: Caller is not a channel member"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        426:
+          description: "Upgrade Required for clients <= 1.4.2"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - Messaging
+      summary: Send a message to a channel or recipient
+      description: "Sends message to channel members and broadcasts `message` event over WebSocket. Outdated clients (`<= 1.4.2`) are blocked."
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/ClientVersionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  example: Encrypted payload or plaintext message
+                is_e2ee:
+                  type: boolean
+                  example: true
+                reply_to:
+                  type: string
+                  example: msg-12345670
+                  nullable: true
+              required:
+                - content
+      responses:
+        201:
+          description: Message created and dispatched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        400:
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        403:
+          description: "Forbidden: Not member, recipient archived/purged, or system channel"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        426:
+          description: "Upgrade Required for clients <= 1.4.2"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/channels/{channel_id}/reactions:
+    post:
+      tags:
+        - Messaging
+      summary: Add or toggle emoji reaction on message
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/ClientVersionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message_id:
+                  type: string
+                  example: msg-12345678
+                emoji:
+                  type: string
+                  example: 🔥
+              required:
+                - message_id
+                - emoji
+      responses:
+        200:
+          description: Updated reaction dictionary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reactions:
+                    type: string
+                    example: "{\"🔥\":[\"user-uuid-1\"]}"
+        403:
+          description: "Forbidden: Not a member"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/channels/{channel_id}/members:
+    get:
+      tags:
+        - "Channels & Direct Chats"
+      summary: Get list of members in a channel
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Channel members list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelMember"
+        403:
+          description: "Forbidden: Not a channel member"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/channels/{channel_id}/read:
+    post:
+      tags:
+        - Messaging
+      summary: Mark all messages in channel as read
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Success status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        403:
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/posts:
+    get:
+      tags:
+        - Feed Posts
+      summary: Fetch recent public feed posts
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Feed posts list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Post"
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - Feed Posts
+      summary: Publish a post to the feed
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  example: "Excited about new end-to-end encryption features in Sharada!"
+              required:
+                - content
+      responses:
+        201:
+          description: Created post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+        400:
+          description: Empty content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/posts/{post_id}:
+    delete:
+      tags:
+        - Feed Posts
+      summary: Delete a feed post (Author or Admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: post_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Post deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/nfc/exchange:
+    post:
+      tags:
+        - Fast-Connect NFC
+      summary: Establish fast-connect direct channel via NFC tap
+      description: "Pairs two nearby devices via NFC exchange, creating an instant direct E2EE conversation."
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_username:
+                  type: string
+                  example: alice
+              required:
+                - target_username
+      responses:
+        200:
+          description: Direct channel created/retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  channel_id:
+                    type: string
+                    example: direct-3fa85f64-9f8a7b6c
+                  partner:
+                    type: string
+                    example: alice
+        404:
+          description: Target user not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/user/sessions:
+    get:
+      tags:
+        - "Sessions & Devices"
+      summary: "List all active device sessions & current session"
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Active and current sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_session:
+                    $ref: "#/components/schemas/Session"
+                  active_sessions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Session"
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/user/sessions/terminate-others:
+    post:
+      tags:
+        - "Sessions & Devices"
+      summary: Revoke all other active sessions except current
+      description: "Terminates all other client sessions and sends real-time `session_revoked` WebSocket notification to disconnect them."
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Sessions terminated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/user/sessions/terminate:
+    post:
+      tags:
+        - "Sessions & Devices"
+      summary: Revoke specific session by ID
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                  example: 8b23c5e1-a012-4f3b-9e4a-5c6d7e8f9a0b
+              required:
+                - session_id
+      responses:
+        200:
+          description: Session terminated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        400:
+          description: Missing session_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/user/sessions/settings:
+    post:
+      tags:
+        - "Sessions & Devices"
+      summary: Configure E2EE and Call permissions for a session
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                allow_e2ee:
+                  type: boolean
+                  example: true
+                allow_calls:
+                  type: boolean
+                  example: true
+              required:
+                - session_id
+                - allow_e2ee
+                - allow_calls
+      responses:
+        200:
+          description: Settings saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+  /api/user/sessions/qr-link:
+    post:
+      tags:
+        - "Sessions & Devices"
+      summary: Generate one-time QR pairing payload for linking new device
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: QR pairing token and URI scheme
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pair_token:
+                    type: string
+                    example: qr-pair-1f2e3d4c
+                  qr_payload:
+                    type: string
+                    example: "sharada://auth/pair?user=camper&token=qr-pair-1f2e3d4c"
+                  expires_in:
+                    type: integer
+                    example: 300
+  /api/admin/users:
+    get:
+      tags:
+        - Administration
+      summary: List all users with administrative retention details (Admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: User records with deletion and 2FA timestamps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        403:
+          description: "Forbidden: Not an admin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - Administration
+      summary: "Create new user & generate single-use raw master key (Admin only)"
+      description: |
+          Creates user in `INVITED` status with a 48-hour onboarding window.
+          The returned `raw_key` is shown **strictly once** and cannot be recovered from the database.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: new_operative
+                trust_level:
+                  type: integer
+                  enum:
+                    - 0
+                    - 1
+                    - 2
+                  default: 0
+                role_ids:
+                  type: array
+                  items:
+                    type: string
+                  example:
+                    - role-dev
+              required:
+                - username
+      responses:
+        201:
+          description: User created with single-use raw master key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  username:
+                    type: string
+                    example: new_operative
+                  raw_key:
+                    type: string
+                    example: v8L2-qM9p-x7Rt-4K1w
+                  status:
+                    type: string
+                    example: INVITED
+                  invited_expires_at:
+                    type: string
+                    format: date-time
+                  message:
+                    type: string
+        403:
+          description: "Forbidden: Not an admin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        409:
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/admin/action:
+    post:
+      tags:
+        - Administration
+      summary: "Execute admin action: archive, unarchive, cancel_deletion, set_trust, or purge (Admin only)"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_user_id:
+                  type: string
+                  format: uuid
+                  example: user-uuid-to-act-on
+                action:
+                  type: string
+                  enum:
+                    - archive
+                    - unarchive
+                    - cancel_deletion
+                    - set_trust
+                    - purge
+                  example: archive
+                trust_level:
+                  type: integer
+                  enum:
+                    - 0
+                    - 1
+                    - 2
+                  description: Required if action is set_trust
+              required:
+                - target_user_id
+                - action
+      responses:
+        200:
+          description: Action result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Пользователь отправлен в архив
+        400:
+          description: Invalid action or parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        403:
+          description: "Forbidden: Not an admin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/admin/logs:
+    get:
+      tags:
+        - Administration
+      summary: Retrieve immutable security audit trail (Admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Latest 100 audit entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+        403:
+          description: "Forbidden: Not an admin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/admin/broadcast-alert:
+    post:
+      tags:
+        - Administration
+      summary: Broadcast system announcement to all users (Admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  example: "Sharada server maintenance scheduled for 02:00 UTC."
+      responses:
+        200:
+          description: Broadcast delivered count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  sent_to:
+                    type: integer
+                    example: 120
+                  message:
+                    type: string
+        403:
+          description: "Forbidden: Not an admin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ws:
+    get:
+      tags:
+        - WebSocket Real-Time
+      summary: "Full-duplex WebSocket connection for real-time messaging & WebRTC signaling"
+      description: |
+          Upgrades connection to bidirectional WebSocket protocol.
+          **Connection URLs**:
+          - `ws://localhost:8080/ws?token=<session_token>&v=1.4.3`
+          - Or pass `Authorization: Bearer <session_token>` header during handshake.
+          
+          **Client-Allowed Events (Client → Server)**:
+          - `typing`: Informs channel members of user typing activity (`{"channel_id": "..."}`)
+          - `call_offer`: Initiates WebRTC SDP offer to target user or channel
+          - `call_answer`: WebRTC SDP answer
+          - `call_candidate`: ICE candidate trickle
+          - `call_join`, `call_leave`, `call_reject`, `call_busy`: Call session state control
+          
+          **Server Broadcast Events (Server → Client)**:
+          - `message`: New encrypted or plaintext message arrived (delivered strictly to channel members)
+          - `typing`: Member typing indicator
+          - `user_online`, `user_offline`: Presence updates
+          - `channel_created`: Added to new channel
+          - `channel_deleted`: Channel was removed
+          - `message_reaction`: Reaction was added/removed
+          - `messages_read`: Read receipts updated
+          - `session_revoked`: Device session terminated remotely
+          - `system_alert`: Important service or security notification
+      parameters:
+        - name: token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Session token if Authorization header is unsupported by WebSocket client
+        - name: v
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 1.4.3
+          description: "Client version. If <= 1.4.2, server pushes mandatory update warning event."
+      responses:
+        101:
+          description: Switching Protocols to WebSocket. All subsequent communication occurs over the socket in JSON-encoded frames conforming to the WebSocketEvent schema.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSocketEvent"
+        401:
+          description: "Unauthorized: Invalid or expired session token"
