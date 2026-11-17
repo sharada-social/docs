@@ -1,16 +1,18 @@
 openapi: 3.1.0
 info:
-  title: Sharada Private Messenger API
-  version: 1.4.3
+  title: Sharada Private Messenger API v2
+  version: 2.0.0
   description: |
-      ## Sharada Core API & Real-Time Protocol Specification
+      ## Sharada Core API & Real-Time Protocol Specification (API v2)
       
       Sharada is a high-security, privacy-focused private messenger featuring:
-      - **Zero-knowledge friendly E2EE messaging** and multi-device session management.
-      - **Strict Client Version Gating**: Clients with version `<= 1.4.2` are quarantined and cut off from private/group chats.
+      - **API Protocol Versioning (v2)**: Strict protocol-level version gating via integer header `X-Api-Version` (Current: 2, Min: 2). Outdated protocol versions receive `426 api_version_unsupported`, future versions receive `400 api_version_too_new`.
+      - **Third-Party Client Support**: Decoupled protocol version (`X-Api-Version`) from client semantic version. Login and 2FA setup accept a decorative `client` metadata object (`name`, `version`, `device_name`, `platform`) saved in session records and displayed in session settings.
+      - **WebSocket Protocol Gating**: WebSocket handshake reads `api_version` bound to the authenticated session token. Incompatible sessions are rejected during handshake with application close code `4426` and reason string (`api_version_unsupported` / `api_version_too_new`). Tokens can be passed via `Sec-WebSocket-Protocol` header to avoid URI query leakage.
+      - **Machine-Readable Error Codes**: All API error responses return structured JSON with a machine-readable `code` field, `api_version`, and `min_api_version`.
       - **Two-Factor Authentication (TOTP)** lifecycle: `INVITED` (48h single-use raw key) → `PENDING_2FA` (24h TOTP setup) → `ACTIVE`.
-      - **Hybrid Password Hashing**: Argon2id (64MB RAM, 2 iterations, 4 threads) + Bcrypt (v2) with backwards compatibility for legacy hashes.
-      - **Real-Time WebSocket Protocol**: Message delivery, presence indicators, typing status, and WebRTC peer-to-peer signaling for voice/video calls.
+      - **Hybrid Password Hashing**: Argon2id (64MB RAM, 2 iterations, 4 threads) + Bcrypt with salt.
+      - **Real-Time WebSocket Protocol**: Message delivery, presence indicators, typing status, and channel updates.
       
       ---
       
@@ -24,8 +26,8 @@ info:
       #### Required Client Headers:
       | Header | Description | Required | Example |
       |---|---|---|---|
-      | `X-Client-Version` | Semantic version of the client. Must be `>= 1.4.3`. Outdated clients receive `426 Upgrade Required`. | Recommended on all requests, mandatory for channel messaging | `1.4.3` |
-      | `X-Device-ID` | Unique device UUID to avoid duplicate sessions on the same physical client. | Optional | `4a8b7e21-9f3c-4d5e-8a1b-0c2d3e4f5a6b` |
+      | `X-Api-Version` | Integer API protocol version. Must be `>= 2` and `<= 2`. | Mandatory for all API endpoints (except `/api/meta` and `/api/updates/check`) | `2` |
+      | `X-Device-ID` | Unique device UUID to avoid duplicate sessions on repeated logins. | Login & 2FA Setup only | `4a8b7e21-9f3c-4d5e-8a1b-0c2d3e4f5a6b` |
       
   contact:
     name: Sharada Security Team
@@ -67,23 +69,23 @@ components:
       bearerFormat: JWT / Token
       description: "Standard session token obtained via `/api/auth/login` or `/api/auth/setup-2fa`."
   parameters:
-    ClientVersionHeader:
-      name: X-Client-Version
-      in: header
-      required: false
-      description: "Client version string (e.g. `1.4.3`). Clients `< 1.4.3` are restricted or receive `426 Upgrade Required`."
-      schema:
-        type: string
-        example: 1.4.3
     DeviceIDHeader:
       name: X-Device-ID
       in: header
       required: false
-      description: Client device identifier UUID. Prevents session duplication on repeated logins.
+      description: Client device identifier UUID. Used on login and 2FA setup to avoid duplicate sessions.
       schema:
         type: string
         format: uuid
         example: 4a8b7e21-9f3c-4d5e-8a1b-0c2d3e4f5a6b
+    ApiVersionHeader:
+      name: X-Api-Version
+      in: header
+      required: true
+      description: "API protocol version integer. Mandatory for all protected endpoints. Missing / outdated: 426 (`api_version_unsupported`), too new: 400 (`api_version_too_new`)."
+      schema:
+        type: integer
+        example: 2
   schemas:
     UserStatus:
       type: string
@@ -236,6 +238,14 @@ components:
         is_revoked:
           type: boolean
           example: false
+        client:
+          $ref: "#/components/schemas/ClientInfo"
+        api_version:
+          type: integer
+          example: 2
+        device_id:
+          type: string
+          example: 4a8b7e21-9f3c-4d5e-8a1b-0c2d3e4f5a6b
     ChannelType:
       type: string
       enum:
@@ -468,11 +478,21 @@ components:
         error:
           type: boolean
           example: true
+        code:
+          type: string
+          example: api_version_unsupported
         message:
           type: string
-          example: Invalid credentials or unauthorized
+          example: Используемая версия протокола API устарела.
+        api_version:
+          type: integer
+          example: 2
+        min_api_version:
+          type: integer
+          example: 2
       required:
         - error
+        - code
         - message
     WebSocketEvent:
       type: object
@@ -523,6 +543,32 @@ components:
       required:
         - type
         - timestamp
+    ClientInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Client application name
+          example: Sharada Web
+        version:
+          type: string
+          description: Client semantic version
+          example: 2.0.0
+        device_name:
+          type: string
+          description: Friendly device model name (without HWID/serials)
+          example: Windows PC
+        platform:
+          type: string
+          enum:
+            - windows
+            - linux
+            - android
+            - ios
+            - macos
+            - web
+            - other
+          example: windows
 paths:
   /api/updates/check:
     get:
@@ -530,8 +576,7 @@ paths:
         - "Updates & Versioning"
       summary: "Check for updates & minimum required client version"
       description: "Returns the latest available release, mandatory flag, minimum required version (1.4.3), and download URLs."
-      parameters:
-        - $ref: "#/components/parameters/ClientVersionHeader"
+      parameters: []
       responses:
         200:
           description: Release and version gating information
@@ -550,7 +595,7 @@ paths:
           - If user has 2FA enabled and no `totp_code` is provided: returns `REQUIRE_2FA`.
           - If successful: returns session token and user profile.
       parameters:
-        - $ref: "#/components/parameters/ClientVersionHeader"
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - $ref: "#/components/parameters/DeviceIDHeader"
       requestBody:
         required: true
@@ -570,6 +615,8 @@ paths:
                   type: string
                   description: 6-digit TOTP code (if 2FA active)
                   example: 123456
+                client:
+                  $ref: "#/components/schemas/ClientInfo"
               required:
                 - username
                 - password
@@ -665,7 +712,7 @@ paths:
       summary: "Finalize TOTP verification & activate user account"
       description: "Validates initial 6-digit TOTP code during the 24-hour onboarding window. Upon success, activates account to `ACTIVE` and issues a permanent 1-year session token."
       parameters:
-        - $ref: "#/components/parameters/ClientVersionHeader"
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - $ref: "#/components/parameters/DeviceIDHeader"
       requestBody:
         required: true
@@ -686,6 +733,8 @@ paths:
                 password:
                   type: string
                   example: raw_key_here
+                client:
+                  $ref: "#/components/schemas/ClientInfo"
       responses:
         200:
           description: TOTP verified and account successfully activated
@@ -728,7 +777,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/ClientVersionHeader"
+        - $ref: "#/components/parameters/ApiVersionHeader"
       responses:
         200:
           description: Authenticated user object with roles and inactivity policies
@@ -749,7 +798,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/ClientVersionHeader"
+        - $ref: "#/components/parameters/ApiVersionHeader"
       requestBody:
         required: true
         content:
@@ -864,6 +913,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/user/me/delete-account:
     post:
       tags:
@@ -910,6 +961,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/users/online:
     get:
       tags:
@@ -945,6 +998,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/users/search:
     get:
       tags:
@@ -953,6 +1008,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - name: q
           in: query
           required: true
@@ -998,7 +1054,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/ClientVersionHeader"
+        - $ref: "#/components/parameters/ApiVersionHeader"
       responses:
         200:
           description: List of accessible channels
@@ -1022,7 +1078,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - $ref: "#/components/parameters/ClientVersionHeader"
+        - $ref: "#/components/parameters/ApiVersionHeader"
       requestBody:
         required: true
         content:
@@ -1126,12 +1182,12 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - name: channel_id
           in: path
           required: true
           schema:
             type: string
-        - $ref: "#/components/parameters/ClientVersionHeader"
       responses:
         200:
           description: Channel deleted
@@ -1175,6 +1231,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - name: channel_id
           in: path
           required: true
@@ -1206,7 +1263,6 @@ paths:
           schema:
             type: string
           description: Message ID to fetch newer messages from
-        - $ref: "#/components/parameters/ClientVersionHeader"
       responses:
         200:
           description: List of messages
@@ -1242,12 +1298,12 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - name: channel_id
           in: path
           required: true
           schema:
             type: string
-        - $ref: "#/components/parameters/ClientVersionHeader"
       requestBody:
         required: true
         content:
@@ -1300,12 +1356,12 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - name: channel_id
           in: path
           required: true
           schema:
             type: string
-        - $ref: "#/components/parameters/ClientVersionHeader"
       requestBody:
         required: true
         content:
@@ -1347,6 +1403,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - name: channel_id
           in: path
           required: true
@@ -1375,6 +1432,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - name: channel_id
           in: path
           required: true
@@ -1419,6 +1477,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
     post:
       tags:
         - Feed Posts
@@ -1450,6 +1510,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/posts/{post_id}:
     delete:
       tags:
@@ -1458,6 +1520,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - name: post_id
           in: path
           required: true
@@ -1523,6 +1586,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/user/sessions:
     get:
       tags:
@@ -1550,6 +1615,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/user/sessions/terminate-others:
     post:
       tags:
@@ -1575,6 +1642,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/user/sessions/terminate:
     post:
       tags:
@@ -1612,6 +1681,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/user/sessions/settings:
     post:
       tags:
@@ -1650,6 +1721,8 @@ paths:
                   success:
                     type: boolean
                     example: true
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/user/sessions/qr-link:
     post:
       tags:
@@ -1674,6 +1747,8 @@ paths:
                   expires_in:
                     type: integer
                     example: 300
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/admin/users:
     get:
       tags:
@@ -1696,6 +1771,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
     post:
       tags:
         - Administration
@@ -1767,6 +1844,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/admin/action:
     post:
       tags:
@@ -1830,6 +1909,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/admin/logs:
     get:
       tags:
@@ -1852,6 +1933,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /api/admin/broadcast-alert:
     post:
       tags:
@@ -1890,6 +1973,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+      parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
   /ws:
     get:
       tags:
@@ -1919,6 +2004,7 @@ paths:
           - `session_revoked`: Device session terminated remotely
           - `system_alert`: Important service or security notification
       parameters:
+        - $ref: "#/components/parameters/ApiVersionHeader"
         - name: token
           in: query
           required: false
@@ -1941,3 +2027,52 @@ paths:
                 $ref: "#/components/schemas/WebSocketEvent"
         401:
           description: "Unauthorized: Invalid or expired session token"
+  /api/meta:
+    get:
+      tags:
+        - "Updates & Versioning"
+      summary: Get API metadata and supported protocol versions (Public)
+      description: Returns the current and minimum working API protocol version. Public endpoint exempt from version gating and authentication.
+      responses:
+        200:
+          description: API metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_version:
+                    type: integer
+                    example: 2
+                  min_api_version:
+                    type: integer
+                    example: 2
+                  name:
+                    type: string
+                    example: Sharada Core API
+                  status:
+                    type: string
+                    example: online
+  /api/health:
+    get:
+      tags:
+        - "Updates & Versioning"
+      summary: Health check endpoint (Public)
+      description: Returns server status and API protocol version.
+      responses:
+        200:
+          description: Server health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  api_version:
+                    type: integer
+                    example: 2
+                  min_api_version:
+                    type: integer
+                    example: 2
